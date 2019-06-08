@@ -18,10 +18,14 @@ Conditions:
   NotStaging: !Not [ !Equals [ !Ref railsenv, "staging" ] ]
 Mappings:
   HOST:
+    jdf-staging:
+      BaseURL: https://staging-cloudformation-jdf.s3-us-west-1.amazonaws.com
+    jdf-production:
+      BaseURL: https://staging-cloudformation-jdf.s3-us-west-1.amazonaws.com
     staging:
-      BaseURL: https://staging-cloudformation-jdf-cgx.s3-us-west-1.amazonaws.com
+      BaseURL: https://cloudformation-sandbox-cgx.s3.us-east-2.amazonaws.com
     production:
-      BaseURL: https://staging-cloudformation-jdf-cgx.s3-us-west-1.amazonaws.com
+      BaseURL: https://cloudformation-sandbox-cgx.s3.us-east-2.amazonaws.com
 Resources:
   VPC:
     Type: AWS::CloudFormation::Stack
@@ -43,15 +47,15 @@ Resources:
         EnvironmentName: !Ref AWS::StackName
         VPC: !GetAtt VPC.Outputs.VPC
         RailsEnv: !Ref railsenv
-  Bastion:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Join ["/", [ !FindInMap [HOST, !Ref railsenv, BaseURL], "infrastructure/bastion.yaml" ] ]
-      Parameters:
-        EnvironmentName: !Ref AWS::StackName
-        MasterKey: !Ref masterkey
-        VPC: !GetAtt VPC.Outputs.VPC
-        InstanceType: t2.micro
-        Subnets: !Join [ ",", [ !GetAtt VPC.Outputs.PublicSubnet1 ]]
-        SecurityGroups: !Join [ ",", [ !GetAtt SecurityGroups.Outputs.BastionAccessSecurityGroup, !GetAtt SecurityGroups.Outputs.PermittedAccessSecurityGroup ]]
-        RailsEnv: !Ref railsenv
+#  Bastion:
+#    Type: AWS::CloudFormation::Stack
+#    Properties:
+#      TemplateURL: !Join ["/", [ !FindInMap [HOST, !Ref railsenv, BaseURL], "infrastructure/bastion.yaml" ] ]
+#      Parameters:
+#        EnvironmentName: !Ref AWS::StackName
+#        MasterKey: !Ref masterkey
+#        VPC: !GetAtt VPC.Outputs.VPC
+#        InstanceType: t2.micro
+#        Subnets: !Join [ ",", [ !GetAtt VPC.Outputs.PublicSubnet1 ]]
+#        SecurityGroups: !Join [ ",", [ !GetAtt SecurityGroups.Outputs.BastionAccessSecurityGroup, !GetAtt SecurityGroups.Outputs.PermittedAccessSecurityGroup ]]
+#        RailsEnv: !Ref railsenv

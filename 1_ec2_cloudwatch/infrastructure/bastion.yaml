@@ -75,12 +75,11 @@ Resources:
     EC2Instance:
       Type: AWS::EC2::Instance
       Properties:
-          KeyName: !Ref MasterKey
-          AssociatePublicIpAddress: true
+          KeyName: jdf
           EbsOptimized: false
           IamInstanceProfile: !Ref InstanceProfile
           ImageId: !FindInMap [AWSRegionToAMI, !Ref 'AWS::Region', AMI]
-          InstanceType: !Ref InstanceType
+          InstanceType: t2.micro
           SecurityGroups: !Ref SecurityGroups
           UserData:
             'Fn::Base64': !Sub |

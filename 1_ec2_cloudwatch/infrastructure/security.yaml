@@ -33,47 +33,7 @@ Resources:
       Tags:
       - Key: Name
         Value: !Sub ${EnvironmentName}-Outside-Permitted-Access
-  PermittedLBAccessSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access from outside world to the LoadBalancers
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-Outside-PermittedLB-Access
-  ECSHostSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access to the ECS hosts and the tasks/containers that run on them
-      SecurityGroupIngress:
-      - CidrIp: 10.180.0.0/16
-        IpProtocol: -1
-        Description: Connection within the VPC
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-ECS-Hosts
 
-  # This security group defines who/where is allowed to access the Application Load Balancer.
-  # By default, we've opened this up to the public internet (0.0.0.0/0) but can you restrict
-  # it further if you want.
-  LoadBalancerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access to the load balancer that sits in front of ECS
-      SecurityGroupIngress:
-      - CidrIp: !If [ Internetable , "0.0.0.0/0", !Join [ "/", [ !Ref OfficeIp, "32"] ] ]
-        IpProtocol: tcp
-        FromPort: 80
-        ToPort: 80
-      - CidrIp: !If [ Internetable , "0.0.0.0/0", !Join [ "/", [ !Ref OfficeIp, "32"] ] ]
-        IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-LoadBalancers
 
   BastionAccessSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -94,131 +54,12 @@ Resources:
       - Key: Name
         Value: !Sub ${EnvironmentName}-BastionAccess
 
-  RabbitAccessSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access to the Services
-      SecurityGroupIngress:
-      # Allow access to 22/tcp from the Melbourne office group, consider open?
-      - CidrIp: "10.180.0.0/16"
-        IpProtocol: -1
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-RabbitMQ-Access
 
-  RabbitLBAccessSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access to the Services
-      SecurityGroupIngress:
-      # Allow access to 22/tcp from the Melbourne office group, consider open?
-      - CidrIp: "10.180.0.0/16"
-        FromPort: 5672
-        ToPort: 5672
-        IpProtocol: tcp
-      - CidrIp: "10.180.0.0/16"
-        FromPort: 80
-        ToPort: 80
-        IpProtocol: tcp
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-RabbitMQLB-Access
-
-  ServicesHostAccessSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Access to the Services
-      SecurityGroupIngress:
-      # Allow access to 22/tcp from the Melbourne office group, consider open?
-      - CidrIp: "10.180.0.0/16"
-        IpProtocol: -1
-      - CidrIp: !Join [ "/", [ !Ref OfficeIp, "32"] ]
-        IpProtocol: tcp
-        FromPort: 22
-        ToPort: 22
-      - CidrIp: !Join [ "/", [ !Ref OfficeIp, "32"] ]
-        IpProtocol: tcp
-        FromPort: 25
-        ToPort: 25
-      - CidrIp: !Join [ "/", [ !Ref OfficeIp, "32"] ]
-        IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-Services
-
-  RDSSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: ECS host access for RDS database
-      SecurityGroupIngress:
-      # Allow access to 3306/tcp from the ecs host security group
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        SourceSecurityGroupId: !Ref ECSHostSecurityGroup
-        Description: ECS Access
-      - IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        CidrIp: !Join [ "/", [ !Ref OfficeIp, "32"] ]
-        Description: Office Access
-      - SourceSecurityGroupId: !Ref BastionAccessSecurityGroup
-        IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        Description: Bastion Access
-      - SourceSecurityGroupId: !Ref ServicesHostAccessSecurityGroup
-        IpProtocol: tcp
-        FromPort: 3306
-        ToPort: 3306
-        Description: Services Host Access
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-RDS
-  RDSOutsideSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref VPC
-      GroupDescription: Outside access to RDS
-      Tags:
-      - Key: Name
-        Value: !Sub ${EnvironmentName}-Outside-RDS
 Outputs:
-    ECSHostSecurityGroup:
-        Description: A reference to the security group for ECS hosts
-        Value: !Ref ECSHostSecurityGroup
-
-    LoadBalancerSecurityGroup:
-        Description: A reference to the security group for load balancers
-        Value: !Ref LoadBalancerSecurityGroup
 
     BastionAccessSecurityGroup:
         Description: A reference to the security group for bastion access
         Value: !Ref BastionAccessSecurityGroup
-
-    ServicesHostAccessSecurityGroup:
-        Description: A reference to the security group for Services Host access
-        Value: !Ref ServicesHostAccessSecurityGroup
-
-    RDSSecurityGroups:
-        Description: A reference to the security group for RDS database
-        Value: !Join [ ",", [ !Ref RDSSecurityGroup ]]
     PermittedAccessSecurityGroup:
         Description: A reference for permitted accesses
         Value: !Ref PermittedAccessSecurityGroup
-    PermittedLBAccessSecurityGroup:
-        Description: A reference for permitted loadbalancer accesses
-        Value: !Ref PermittedLBAccessSecurityGroup
-    RabbitAccessSecurityGroup:
-        Description: A reference to the security group for Rabbit ECS
-        Value: !Ref RabbitAccessSecurityGroup
-    RabbitLBAccessSecurityGroup:
-        Description: A reference to the security group for Rabbit LB
-        Value: !Ref RabbitLBAccessSecurityGroup
-
