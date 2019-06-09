@@ -4,7 +4,7 @@ Parameters:
   railsenv:
     Description: Rails ENV Version
     Type: String
-    Default: production
+    Default: jdf-staging
   masterkey:
     Description: Master Key Name
     Type: String
