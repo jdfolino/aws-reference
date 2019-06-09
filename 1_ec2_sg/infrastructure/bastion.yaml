@@ -19,10 +19,6 @@ Parameters:
       Description: Choose which subnets this ECS cluster should be deployed to
       Type: List<AWS::EC2::Subnet::Id>
 
-  SecurityGroups:
-      Description: Select the Security Group to use for access to the bastion
-      Type: List<AWS::EC2::SecurityGroup::Id>
-
   MasterKey:
     Description: Select the Security Group to use for access to the bastion
     Type: String
@@ -80,7 +76,6 @@ Resources:
           IamInstanceProfile: !Ref InstanceProfile
           ImageId: !FindInMap [AWSRegionToAMI, !Ref 'AWS::Region', AMI]
           InstanceType: t2.micro
-          SecurityGroups: !Ref SecurityGroups
           UserData:
             'Fn::Base64': !Sub |
               #!/bin/bash -x

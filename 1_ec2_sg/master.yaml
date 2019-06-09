@@ -1,10 +1,6 @@
 Description: >
   This template deploys a VPC and a bastion
 Parameters:
-  officeip:
-    Description: IP address of the office
-    Type: String
-    Default: 27.32.211.162
   railsenv:
     Description: Rails ENV Version
     Type: String
@@ -23,9 +19,9 @@ Mappings:
     jdf-production:
       BaseURL: https://staging-cloudformation-jdf.s3-us-west-1.amazonaws.com
     staging:
-      BaseURL: https://cloudformation-sandbox-cgx.s3.us-east-2.amazonaws.com
+      BaseURL: https://staging-cloudformation-jdf-cgx.s3-us-west-1.amazonaws.com
     production:
-      BaseURL: https://cloudformation-sandbox-cgx.s3.us-east-2.amazonaws.com
+      BaseURL: https://staging-cloudformation-jdf-cgx.s3-us-west-1.amazonaws.com
 Resources:
   VPC:
     Type: AWS::CloudFormation::Stack
@@ -38,24 +34,14 @@ Resources:
         PublicSubnet2CIDR:  10.180.16.0/21
         PrivateSubnet1CIDR: 10.180.24.0/21
         PrivateSubnet2CIDR: 10.180.32.0/21
-  SecurityGroups:
+  Bastion:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Join ["/", [ !FindInMap [HOST, !Ref railsenv, BaseURL], "infrastructure/security.yaml" ] ]
+      TemplateURL: !Join ["/", [ !FindInMap [HOST, !Ref railsenv, BaseURL], "infrastructure/bastion.yaml" ] ]
       Parameters:
-        OfficeIp: !Ref officeip
         EnvironmentName: !Ref AWS::StackName
+        MasterKey: !Ref masterkey
         VPC: !GetAtt VPC.Outputs.VPC
+        InstanceType: t2.micro
+        Subnets: !Join [ ",", [ !GetAtt VPC.Outputs.PublicSubnet1 ]]
         RailsEnv: !Ref railsenv
-#  Bastion:
-#    Type: AWS::CloudFormation::Stack
-#    Properties:
-#      TemplateURL: !Join ["/", [ !FindInMap [HOST, !Ref railsenv, BaseURL], "infrastructure/bastion.yaml" ] ]
-#      Parameters:
-#        EnvironmentName: !Ref AWS::StackName
-#        MasterKey: !Ref masterkey
-#        VPC: !GetAtt VPC.Outputs.VPC
-#        InstanceType: t2.micro
-#        Subnets: !Join [ ",", [ !GetAtt VPC.Outputs.PublicSubnet1 ]]
-#        SecurityGroups: !Join [ ",", [ !GetAtt SecurityGroups.Outputs.BastionAccessSecurityGroup, !GetAtt SecurityGroups.Outputs.PermittedAccessSecurityGroup ]]
-#        RailsEnv: !Ref railsenv
