@@ -131,13 +131,7 @@ Resources:
               logger "INFO: /etc/sudoers setup successfully"
           fi
 
-          sudo systemctl start awslogsd
-          retVal=$?
-          if [ $retVal -ne 0 ]; then
-              logger "ERROR: Failed to start awslogsd"
-          else
-              logger "INFO: Started awslogsd"
-          fi
+          sudo /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
 
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
