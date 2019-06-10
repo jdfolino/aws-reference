@@ -28,12 +28,6 @@ Resources:
       Roles:
       - !Ref IAMRole
 
-  LaunchConfiguration:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      ImageId: ami-015954d5e5548d13b
-      InstanceType: t2.micro
-
   IAMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -104,9 +98,23 @@ Resources:
       UserData:
         'Fn::Base64': !Sub |
           #!/bin/bash -x
+
           groupadd -f sudo
-          sudo echo "%sudo   ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          sudo yum install -y awslogs
+          sudo su - root -c 'echo "%sudo   ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers'
+          retVal=$?
+          if [ $retVal -ne 0 ]; then
+              logger "ERROR: Failed to set up /etc/sudoers"
+          else
+              logger "INFO: /etc/sudoers setup successfully"
+          fi
+
+          sudo systemctl start awslogsd
+          retVal=$?
+          if [ $retVal -ne 0 ]; then
+              logger "ERROR: Failed to start awslogsd"
+          else
+              logger "INFO: Started awslogsd"
+          fi
 
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
