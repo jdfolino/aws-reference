@@ -1,0 +1,83 @@
+Description: >
+
+  This template deploys a web application
+
+Parameters:
+  BaseStackName:
+    Description: The name of the original network stack
+    Type: String
+    Default: network
+  Octet2:
+    Description: Octet2
+    Type: String
+    Default: 120
+  NestedTemplatesURL:
+    Description: S3 URL of the reuasable nested templates directory
+    Type: String
+    Default: https://jcloudformation.s3-ap-southeast-2.amazonaws.com/cfn/nested
+
+Resources:
+  HttpWorldAccessSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${BaseStackName}-VPC"
+      GroupDescription: Access to the outside world
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-HttpWorldAccess
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Description: Allow the internal IP and NAT 1 access for internal connectivity.
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${BaseStackName}-VPC"
+      GroupDescription: Access to the load balancer that sits in front of ECS
+      SecurityGroupIngress:
+        - CidrIp:
+            Fn::Join:
+              - "/"
+              - - Fn::ImportValue: !Sub "${BaseStackName}-NatGatewayEIP1"
+                - "32"
+          IpProtocol: -1
+        - CidrIp: !Sub "10.${Octet2}.0.0/16"
+          IpProtocol: -1
+          Description: Internal Connectivity
+        - SourceSecurityGroupId: !Ref HttpWorldAccessSecurityGroup
+          IpProtocol: -1
+          Description: Allow ingress from Internet
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-LoadBalancers
+
+  AppAlb:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Join ["/", [ !Ref NestedTemplatesURL, "_load-balancers.yaml" ] ]
+      Parameters:
+        EnvironmentName: AppAlb
+        VPC:
+          Fn::ImportValue: !Sub "${BaseStackName}-VPC"
+        Subnets:
+          Fn::ImportValue: !Sub "${BaseStackName}-PublicSubnets"
+        SecurityGroups:
+          !Join [ ",", [ !Ref LoadBalancerSecurityGroup, !Ref HttpWorldAccessSecurityGroup ]]
+        Scheme: internet-facing
+
+Outputs:
+  AppAlbListenerHttp:
+    Description: Reference to the Load balancer listener
+    Value: !GetAtt AppAlb.Outputs.ListenerHttp
+    Export:
+      Name: !Sub '${BaseStackName}-AppAlbListenerHttp'
+  AppAlb:
+    Description: Reference to the Load balancer AppAlb
+    Value: !Ref AppAlb
+    Export:
+      Name: !Sub '${BaseStackName}-AppAlb'

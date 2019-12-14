@@ -1,0 +1,228 @@
+Description: >
+
+    This template deploys an ECS cluster
+    Author: CGX Admin <admin@cgx.com.au>
+Parameters:
+  BaseStackName:
+    Description: The name of the network stack
+    Type: String
+    Default: network
+  InstanceTypeECSCluster:
+    Description: Instance Type for the ECS cluster
+    Type: String
+    Default: t3.medium
+  ClusterSize:
+    Description: How many ECS hosts do you want to initially deploy?
+    Type: Number
+    Default: 2
+  Octet2:
+    Description: Value of the second octet in the IP address.
+    Type: Number
+    Default: 120
+
+
+Mappings:
+  # All of these AMIs are region specific following the below configuration.
+  # amzn-ami-2018.03.e-amazon-ecs-optimized
+  # Amazon Linux AMI 2018.03.e x86_64 ECS HVM GP2
+  # Root device type: ebs Virtualization type: hvm ENA Enabled: Yes
+  AWSRegionToAMI:
+    us-east-1:
+        AMI: ami-00129b193dc81bc31
+    us-east-2:
+        AMI: ami-446f3521
+    us-west-1:
+        AMI: ami-9fadf8ff
+    us-west-2:
+        AMI: ami-7abc111a
+    eu-west-1:
+        AMI: ami-a1491ad2
+    eu-central-1:
+        AMI: ami-54f5303b
+    ap-northeast-1:
+        AMI: ami-0041c416aa23033a2
+    ap-southeast-1:
+        AMI: ami-091bf462afdb02c60
+    ap-southeast-2:
+        AMI: ami-0092e55c70015d8c3
+    ap-south-1:
+        AMI: ami-00925cf783e2e8fa0
+
+Resources:
+
+  #################################
+  ########## ECS CLUSTER ##########
+  #################################
+
+  ECSCluster:
+      Type: AWS::ECS::Cluster
+      Properties:
+          ClusterName: !Ref BaseStackName
+
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        Fn::Split:
+          - ","
+          - Fn::ImportValue: !Sub "${BaseStackName}-PrivateSubnets"
+      LaunchConfigurationName: !Ref ECSLaunchConfiguration
+      MinSize: !Ref ClusterSize
+      MaxSize: !Ref ClusterSize
+      DesiredCapacity: !Ref ClusterSize
+      Tags:
+      - Key: Name
+        Value: !Sub "${BaseStackName} ECS host"
+        PropagateAtLaunch: true
+    CreationPolicy:
+      ResourceSignal:
+        Count: !Ref ClusterSize
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+
+  ECSLaunchConfiguration:
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Properties:
+        ImageId:  !FindInMap [AWSRegionToAMI, !Ref "AWS::Region", AMI]
+        InstanceType: !Ref InstanceTypeECSCluster
+        IamInstanceProfile: !Ref ECSInstanceProfile
+        UserData:
+          Fn::Base64: !Sub |
+              #!/bin/bash
+              yum update -y
+              yum install -y nfs-utils aws-cli docker ecs-init aws-cfn-bootstrap
+              # install AWS SSM
+              sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+
+              # setup users
+              usermod -aG docker ec2-user
+              groupadd sudo
+              echo "%sudo   ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/admin
+              chmod 440 /etc/sudoers.d/admin
+              useradd -u 999 -r clear
+
+              # Notify initilization is complete (both lines are required)
+              /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSLaunchConfiguration 2>&1 > /tmp/init.log
+              /opt/aws/bin/cfn-signal -e $? --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSAutoScalingGroup
+      Metadata:
+          AWS::CloudFormation::Init:
+              configSets:
+                default:
+                  - [config]
+              config:
+                commands:
+                  01_setup_config:
+                    command: !Sub mkdir -p /etc/ecs && echo -e "\nECS_CLUSTER=${ECSCluster}\nECS_ENABLE_TASK_IAM_ROLE=true\n" >> /etc/ecs/ecs.config
+                  02_start_servies:
+                    command: /sbin/service docker start && /sbin/start ecs
+                files:
+                  '/etc/profile.d/docker.sh':
+                    content: |
+                      #!/bin/bash -e
+                      alias dl='docker ps | grep -v ecs-agent | awk '"'"'NR>1{print}'"'"' | tr -s '"'"' '"'"' | awk '"'"'{n=split($0,a," "); print a[1],a[n]}'"'"' | nl'
+                      dc () {
+                        line=`dlist | sed -n $1p`
+                        hash=`echo $line | cut -d' ' -f2`
+                        script=/bin/bash
+                        if [ "$2" != "" ]; then
+                          script=$2
+                        fi
+                        docker exec -e COLUMNS=$COLUMNS -e LINES=$LINES -e TERM=$TERM -it $hash $script
+                      }
+                    mode: '000755'
+                    owner: root
+                    group: root
+                  "/etc/cfn/cfn-hup.conf":
+                    mode: 000400
+                    owner: root
+                    group: root
+                    content: !Sub |
+                      [main]
+                      stack=${AWS::StackId}
+                      region=${AWS::Region}
+
+                  "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+                    content: !Sub |
+                      [cfn-auto-reloader-hook]
+                      triggers=post.update
+                      path=Resources.ContainerInstances.Metadata.AWS::CloudFormation::Init
+                      action=/opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSLaunchConfiguration
+
+                services:
+                  sysvinit:
+                    cfn-hup:
+                      enabled: true
+                      ensureRunning: true
+                      files:
+                      - /etc/cfn/cfn-hup.conf
+                      - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub "${BaseStackName}-ECSRole-${AWS::Region}"
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Action": "sts:AssumeRole",
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                }
+            }]
+        }
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument: |
+          {
+              "Statement": [{
+                  "Effect": "Allow",
+                  "Action": [
+                      "ecs:*",
+                      "logs:*",
+                      "ecr:*",
+                      "ssm:*",
+                      "ec2messages:*",
+                      "ec2:*",
+                      "s3:*",
+                      "ses:*"
+                  ],
+                  "Resource": "*"
+              }]
+          }
+      - PolicyName: systems-manager-access
+        PolicyDocument: |
+          {
+              "Statement": [{
+                  "Effect": "Allow",
+                  "Action": [
+                    "ssm:*",
+                    "ssmmessages:*",
+                    "ec2messages:*",
+                    "cloudwatch:PutMetricData",
+                    "ec2:DescribeInstanceStatus",
+                    "ds:CreateComputer",
+                    "ds:DescribeDirectories",
+                    "logs:*",
+                    "s3:*"
+                  ],
+                  "Resource": "*"
+                }]
+          }
+
+  ECSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - !Ref ECSRole
+
+
+Outputs:
+  ECSCluster:
+    Description: Reference to the ECS Cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${BaseStackName}-ECSCluster'

@@ -1,0 +1,166 @@
+Description: >
+    This template creates a Sinatra service.
+Parameters:
+  Name:
+    Description: The name of the service
+    Type: String
+  BaseStackName:
+    Description: The name of the original stack.
+    Type: String
+  VPC:
+    Description: The VPC that the ECS cluster is deployed to
+    Type: AWS::EC2::VPC::Id
+  Cluster:
+    Description: Please provide the ECS Cluster ID that this service should run on
+    Type: String
+  DesiredCount:
+    Description: How many instances of this task should we run across our cluster?
+    Type: Number
+    Default: 2
+  ListenerHttp:
+    Description: The Application Load Balancer listener to register with
+    Type: String
+  AlbPath:
+    Description: The path to register with the Application Load Balancer
+    Type: String
+  Repo:
+    Description: ECS Repository Name
+    Type: String
+  Version:
+    Description: Version of the Docker image.
+    Type: String
+  Priority:
+    Type: Number
+    Description: Listener Rule Priority
+  MemoryReservation:
+    Type: Number
+  HealthCheckPath:
+    Description: The URL on which to test the health of the system.
+    Type: String
+  ContainerPort:
+    Type: Number
+    Description: Port on which the sinatra server is started
+  LogGroupName:
+    Type: String
+    Description: Name of the log group
+  Vars:
+    Type: String
+    Description: Extra Environment vars to be set on the server
+    Default: ""
+  EnvironmentRegion:
+    Type: String
+    Description: The region where the Docker image is located. (us-east-1)
+    Default: ap-southeast-2
+  Script:
+    Type: CommaDelimitedList
+    Description: Commands to start server
+
+Resources:
+    Service:
+      Type: AWS::ECS::Service
+      DependsOn: ListenerRule
+      Properties:
+        Cluster: !Ref Cluster
+        Role: !Ref ServiceRole
+        DesiredCount: !Ref DesiredCount
+        TaskDefinition: !Ref TaskDefinition
+        DeploymentConfiguration:
+          MaximumPercent: 200
+          MinimumHealthyPercent: 50
+        LoadBalancers:
+        - ContainerName: !Sub ${Name}-service
+          ContainerPort: 4567
+          TargetGroupArn: !Ref TargetGroup
+
+    TaskDefinition:
+      Type: AWS::ECS::TaskDefinition
+      Properties:
+        Family: !Sub ${Name}-service
+        ContainerDefinitions:
+            - Name: !Sub ${Name}-service
+              Command: !Ref Script
+              Essential: true
+              Image: !Sub ${AWS::AccountId}.dkr.ecr.${EnvironmentRegion}.amazonaws.com/${Repo}:${Version}
+              MemoryReservation: !Ref MemoryReservation
+              Environment:
+                - Name: AWS_REGION
+                  Value: !Ref AWS::Region
+                - Name: VERSION_ID
+                  Value: !Ref Version
+                - Name: SERVICE_NAME
+                  Value: !Sub ${Name}-service
+              PortMappings:
+                - ContainerPort: !Ref ContainerPort
+              LogConfiguration:
+                LogDriver: awslogs
+                Options:
+                    awslogs-group: !Ref LogGroupName
+                    awslogs-region: !Ref AWS::Region
+                    awslogs-stream-prefix: !Ref Version
+              Privileged: true
+    TargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        Name: !Sub ${Name}-service
+        VpcId: !Ref VPC
+        Port: 80
+        Protocol: HTTP
+        TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 5
+        Matcher:
+            HttpCode: 200-399
+        HealthCheckIntervalSeconds: 300
+        HealthCheckPath: !Ref HealthCheckPath
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 120
+        HealthyThresholdCount: 2
+
+    ListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        ListenerArn: !Ref ListenerHttp
+        Priority: !Ref Priority
+        Conditions:
+        - Field: path-pattern
+          Values:
+          - !Ref AlbPath
+        Actions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+
+    # This IAM Role grants the service access to register/unregister with the
+    # Application Load Balancer (ALB). It is based on the default documented here:
+    # http://docs.aws.amazon.com/AmazonECS/latest/developerguide/service_IAM_role.html
+    ServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            RoleName: !Sub ecs-service-${AWS::StackName}
+            Path: /
+            AssumeRolePolicyDocument: |
+                {
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": { "Service": [ "ecs.amazonaws.com" ]},
+                        "Action": [ "sts:AssumeRole" ]
+                    }]
+                }
+            Policies:
+                - PolicyName: !Sub ecs-service-${AWS::StackName}
+                  PolicyDocument:
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [{
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ec2:AuthorizeSecurityGroupIngress",
+                                    "ec2:Describe*",
+                                    "elasticloadbalancing:*",
+                                    "s3:*",
+                                    "ses:SendRawEmail",
+                                    "autoscaling:DescribeAutoScalingGroups"
+                                ],
+                                "Resource": "*"
+                        }]
+                    }
+

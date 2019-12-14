@@ -1,0 +1,59 @@
+Description: >
+  Something goes here
+Parameters:
+  BaseStackName:
+    Description: The name of the original stack (should be staging-vpc or production-vpc)
+    Type: String
+    Default: network
+  VersionNumber:
+    Description: ECR version
+    Type: String
+    Default: latest
+  NestedTemplatesURL:
+    Description: S3 URL of the reuasable nested templates directory
+    Type: String
+    Default: https://jcloudformation.s3-ap-southeast-2.amazonaws.com/cfn/nested
+  EcrRegion:
+    Type: String
+    Default: ap-southeast-2
+  NoOfInstances:
+    Type: Number
+    Default: 2
+  AmountOfMemory:
+    Type: Number
+    Default: 64
+
+Resources:
+  ##################### LOGS ########################
+  SinatraServiceLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${BaseStackName}-sinatra-service
+      RetentionInDays: 365
+
+  ##################### SERVICES ####################
+  SinatraService:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Join ["/", [ !Ref NestedTemplatesURL, "_sinatra-service.yaml" ] ]
+      Parameters:
+        Name: sinatra
+        Repo: my-namespace/my-repo
+        BaseStackName: !Ref BaseStackName
+        EnvironmentRegion: !Ref EcrRegion
+        Version: !Ref VersionNumber
+        VPC:
+          Fn::ImportValue: !Sub "${BaseStackName}-VPC"
+        Cluster:
+          Fn::ImportValue: !Sub "${BaseStackName}-ECSCluster"
+        DesiredCount: !Ref NoOfInstances
+        ListenerHttp:
+          Fn::ImportValue: !Sub "${BaseStackName}-AppAlbListenerHttp"
+        MemoryReservation: !Ref AmountOfMemory
+        HealthCheckPath: /
+        ContainerPort: 4567
+        Priority: 5
+        AlbPath: /*
+        Script: "bundle, exec, ruby, /app/main.rb"
+        LogGroupName: !Sub ${BaseStackName}-sinatra-service
+
