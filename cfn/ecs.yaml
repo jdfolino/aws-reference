@@ -1,7 +1,6 @@
 Description: >
 
     This template deploys an ECS cluster
-    Author: CGX Admin <admin@cgx.com.au>
 Parameters:
   BaseStackName:
     Description: The name of the network stack
